@@ -1,0 +1,296 @@
+<html>
+<head>
+    <title>Moat</title>
+    <style>
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      #map {
+        height: 75%;
+      }
+    </style>
+</head>
+  <body>
+
+      <div id="searchfield">
+      <form>
+      <h2>Moat Flight Path in Javascript</h1>
+
+          <label for="autocompleteDeparture">Departure Airport:</label>
+          <input type="text"class="biginput" id="autocompleteDeparture" placeholder="Enter an Airport"/>
+
+          <label for="search">flight path to Arrival Airport:</label>
+          <input class="biginput" id="autocompleteArrival" placeholder="Enter an Airport"/>
+
+          <input id="Route" type="button" value="Get Route" onclick="flightRoute()">
+          </form>
+
+      </div>
+      <div id="w">
+        <div id="outputboxD">
+          <p  id="outputDeparture">Choose an airport and the description will display here.</p>
+        </div>
+        <div id="nauticalmiles">
+          <p id="nautical">Distance will be calculated in nautical miles</p>
+        </div>
+        <div id="outputboxA">
+          <p id="outputArrival">Choose an airport and the description will display here.</p>
+        </div>
+      </div>
+
+    <div id="map"></div>
+    <script type="text/javascript" src="js/jquery-1.9.1.min.js"></script>
+    <script type="text/javascript" src="js/jquery.autocomplete.min.js"></script>
+    <link rel="stylesheet" type="text/css" media="all" href="style.css">
+    <script>
+      var map;
+      var infoWindow;
+      var myLatLngA;
+      var myLatLngD;
+      var countD = 0;
+      var countA = 0;
+      var markers = [];
+      var coordinates =[];
+      var flightPath;
+      var distcount;
+      var arr = [];
+      var arrivaladdress;
+      var departureaddress;
+      var appendcountA = 0;
+      var appendcountD = 0;
+
+      $.ajax({
+        type: 'GET',
+        url: 'https://raw.githubusercontent.com/ram-nadella/airport-codes/master/airports.json',
+        data: { get_param: 'value' },
+        dataType: 'json',
+        success: function (data) {
+
+          var keys  = Object.keys(data);
+          var values = keys.map(function(v) { return data[v]; });
+
+            for (var i = 0; i < values.length; i++){
+              if (values[i].country == "United States"){
+                arr.push(
+                  { "value": values[i].iata+ ' - '+ values[i].name,
+                    "lng": values[i].longitude,
+                    "lat": values[i].latitude,
+                    "city": values[i].city
+                  });
+              }
+            }
+        },
+        async: false
+      });
+
+      $( "#autocompleteDeparture" ).autocomplete({
+        lookup: arr,
+        minLength: 2,
+        onSelect: function (suggestion) {
+            var departHtml = suggestion.value
+            $('#outputDeparture').html(departHtml);
+
+            var lat = parseFloat(suggestion.lat)
+            var lon = parseFloat(suggestion.lng)
+
+            myLatLngD = { "lat": lat,
+                          "lng": lon};
+
+            departureaddress = suggestion.city;
+
+            appendcountD = 0;
+            countD = 1;
+            distcount = countD + countA;
+
+            var geocoderD = new google.maps.Geocoder();
+            geocodeAddressDepa(geocoderD, map);
+
+        }
+      });
+
+      $( "#autocompleteArrival" ).autocomplete({
+        lookup: arr,
+        minLength: 2,
+        onSelect: function (suggestion) {
+        var arriveHtml = suggestion.value
+        $('#outputArrival').html(arriveHtml);
+
+            var lat = parseFloat(suggestion.lat)
+            var lon = parseFloat(suggestion.lng)
+
+            myLatLngA = { "lat": lat,
+                          "lng": lon};
+
+            arrivaladdress = suggestion.city;
+
+            appendcountA = 0;
+            countA = 1;
+            distcount = countD + countA;
+
+            var geocoderA = new google.maps.Geocoder();
+            geocodeAddressAriv(geocoderA, map);
+
+        }
+      });
+
+      function distancecounter(){
+        if (distcount==2){
+        distance(myLatLngD.lat,myLatLngD.lng,myLatLngA.lat,myLatLngA.lng);
+        }
+      }
+
+      //intializes Googlemaps
+      function initMap() {
+        map = new google.maps.Map(document.getElementById('map'), {
+          center: {lat: 36, lng: -98},
+          zoom: 4,
+          styles: [{
+            stylers: [{ visibility: 'simplified' }]
+          }, {
+            elementType: 'labels',
+            stylers: [{ visibility: 'on' }]
+          }]
+        });
+
+        flightLine();
+        addMarker();
+
+      }
+
+      //using googlemaps API and geocodes use values from autocomplete from ajax
+      //to submit into a geocode and get exact location/address
+      function geocodeAddressDepa(geocoder, resultsMap) {
+        var addressD = document.getElementById('autocompleteDeparture').value;
+        geocoder.geocode({'address': addressD}, function(results, status) {
+          if (status === google.maps.GeocoderStatus.OK) {
+            myLatLngD = {"lat": results[0].geometry.location.lat(),
+                         "lng": results[0].geometry.location.lng()}
+            departureaddress = results[0].formatted_address
+          }
+            });
+      }
+
+      function geocodeAddressAriv(geocoder, resultsMap) {
+
+        var address = document.getElementById('autocompleteArrival').value;
+        geocoder.geocode({'address': address}, function(results, status) {
+          if (status === google.maps.GeocoderStatus.OK) {
+            myLatLngA = {"lat": results[0].geometry.location.lat(),
+                         "lng": results[0].geometry.location.lng()}
+            arrivaladdress = results[0].formatted_address
+          }
+            });
+      }
+
+      function flightLine(){
+
+       //draws polyline
+        var flightLine = coordinates
+
+        flightPath = new google.maps.Polyline({
+
+          path: flightLine,
+          geodesic: true,
+          strokeColor: '#6633FF',
+          strokeOpacity: 1.0,
+          strokeWeight: 3
+
+        });
+        flightPath.setMap(map);
+      }
+
+
+      function flightRoute(){
+
+        deleteMarkers();
+
+        //removes current polyline
+        if (coordinates[0] != null){
+          flightPath.setMap(null);
+          coordinates = [];
+          flightLine();
+        }
+
+        //inputs variables from autocomplete to marker and polyline objects
+          coordinates = [{lat: myLatLngD.lat, lng: myLatLngD.lng},
+                          {lat: myLatLngA.lat, lng: myLatLngA.lng}]
+
+          addMarker(myLatLngA);
+          addMarker(myLatLngD);
+          flightLine();
+          center(myLatLngD,myLatLngA);
+          distance(myLatLngD.lat,myLatLngD.lng,myLatLngA.lat,myLatLngA.lng);
+
+          if(appendcountD == 0){
+          var departHtml =' <br> <strong>Latitude: </strong>' + myLatLngD.lat + ' <br> <strong>Longitude: </strong>' + myLatLngD.lng + '<br>' + departureaddress ;
+            $('#outputDeparture').append(departHtml);
+            appendcountD = 1;}
+          if(appendcountA == 0){
+          var arriveHtml =' <br> <strong>Latitude: </strong>' + myLatLngA.lat + ' <br> <strong>Longitude: </strong>' + myLatLngA.lng + '<br>' + arrivaladdress ;
+            $('#outputArrival').append(arriveHtml);
+            appendcountA = 1;}
+      }
+
+      // adds a marker to the map and push to the array.
+      function addMarker(place){
+        var marker = new google.maps.Marker({
+              position: place,
+              map: map,
+          });
+            markers.push(marker);
+      }
+
+      // sets the map on all markers in the array.
+      function setMapOnAll(choice) {
+        for (var i = 0; i < markers.length; i++) {
+          markers[i].setMap(choice);
+
+        }
+      }
+
+      // deletes all markers in the array by removing references to them.
+      function deleteMarkers() {
+            setMapOnAll(null);
+            markers = [];
+            setMapOnAll(map);
+      }
+
+      //centers map with all markers
+
+      function center(onepoint, twopoint){
+        var bounds = new google.maps.LatLngBounds();
+
+        bounds.extend(new google.maps.LatLng(onepoint.lat,onepoint.lng));
+        bounds.extend(new google.maps.LatLng(twopoint.lat,twopoint.lng));
+
+        map.setCenter(bounds.getCenter());
+        map.fitBounds(bounds);
+      }
+
+      //reiterated here for googlemaps autocomplete because
+      //unable to call functions between files
+      function distance(lat1, lon1, lat2, lon2) {
+        var radlat1 = Math.PI * lat1/180;
+        var radlat2 = Math.PI * lat2/180;
+        var radlon1 = Math.PI * lon1/180;
+        var radlon2 = Math.PI * lon2/180;
+        var theta = lon1-lon2
+        var radtheta = Math.PI * theta/180;
+        var dist = Math.sin(radlat1) * Math.sin(radlat2) + Math.cos(radlat1) * Math.cos(radlat2) * Math.cos(radtheta);
+        dist = Math.acos(dist);
+        dist = dist * 180/Math.PI;
+        dist = dist * 60 * 1.1515;
+        var kmdist = dist * 1.609344;
+        var nautdist = dist * 0.8684;
+
+        var nauticalHtml = '<strong>Miles:</strong> '+ dist + ' <strong>miles</strong>' + ' <br> <strong>Nautical Miles:</strong> '+ nautdist + ' <strong>miles</strong>' + ' <br> <strong>Kilometers:</strong> '+ kmdist + ' <strong>km</strong>';
+        $('#nautical').html(nauticalHtml);
+
+      }
+
+    </script>
+    <script src="https://maps.googleapis.com/maps/api/js?callback=initMap&libraries=places,geometry,visualization&sensor=false" async defer></script>
+  </body>
+</html>
